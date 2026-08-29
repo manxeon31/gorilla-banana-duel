@@ -68,14 +68,19 @@ export default function Home() {
   const startMusic = useCallback(() => {
     stopMusic();
     const melody = [262, 330, 392, 523, 392, 330, 294, 370, 440, 587, 440, 370];
+    const bass = [131, 131, 147, 147, 165, 165, 147, 147];
     let step = 0;
-    tone(melody[0], .16, .022, 0, "triangle");
+    // Start immediately inside the user's click event so browser audio policies allow it.
+    void audio().resume();
+    tone(melody[0], .2, .075, 0, "triangle");
+    tone(bass[0], .18, .045, 0, "square");
     musicTimerRef.current = setInterval(() => {
       const note = melody[step++ % melody.length];
-      tone(note, .16, .022, 0, "triangle");
-      if (step % 2 === 0) tone(note / 2, .11, .014, 0, "sine");
-    }, 260);
-  }, [stopMusic, tone]);
+      tone(note, .2, .075, 0, "triangle");
+      tone(bass[step % bass.length], .15, .04, 0, "square");
+      if (step % 4 === 0) tone(1047, .04, .025, 0, "square");
+    }, 240);
+  }, [audio, stopMusic, tone]);
 
   useEffect(() => { valuesRef.current = { angles, powers }; }, [angles, powers]);
   useEffect(() => { modeRef.current = mode; }, [mode]);
@@ -139,7 +144,9 @@ export default function Home() {
     ctx.fillStyle = "#3b2d25"; ctx.beginPath(); ctx.ellipse(0, 58, 34, 38, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = "#1d1714"; ctx.beginPath(); ctx.ellipse(-18, 88, 18, 13, -.18, 0, 7); ctx.ellipse(18, 88, 18, 13, .18, 0, 7); ctx.fill();
     ctx.fillStyle = team; ctx.beginPath(); ctx.roundRect(-27, 49, 54, 25, 8); ctx.fill();
-    ctx.fillStyle = "#fff"; ctx.font = "900 15px Arial"; ctx.textAlign = "center"; ctx.fillText(String(player + 1), 0, 67);
+    ctx.fillStyle = "#fff"; ctx.font = "900 15px Arial"; ctx.textAlign = "center";
+    if (player === 1) { ctx.save(); ctx.scale(-1, 1); ctx.fillText("2", 0, 67); ctx.restore(); }
+    else ctx.fillText("1", 0, 67);
     // Brow, ears, muzzle and a clear inward-looking face.
     ctx.fillStyle = "#34271f"; ctx.beginPath(); ctx.arc(0, 22, 25, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = "#705443"; ctx.beginPath(); ctx.arc(-24, 24, 8, 0, 7); ctx.arc(24, 24, 8, 0, 7); ctx.ellipse(4, 29, 16, 13, 0, 0, 7); ctx.fill();
@@ -257,7 +264,7 @@ export default function Home() {
   useEffect(() => () => { stopMusic(); void audioRef.current?.close(); }, [stopMusic]);
 
   return <main className="game-shell">
-    <header><div><p className="eyebrow">ROOFTOP RIVALRY</p><h1>GORILLA <span>BANANA</span> DUEL</h1></div><div className="mode-area"><div className="mode-switch"><button className={mode==="deathmatch"?"selected":""} disabled={running} onClick={()=>setMode("deathmatch")}>60s Death Match</button><button className={mode==="five"?"selected":""} disabled={running} onClick={()=>setMode("five")}>5-Banana Match</button><button className={mode==="training"?"selected":""} disabled={running} onClick={()=>setMode("training")}>Free Training</button><button className="music-toggle" onClick={()=>{const next=!musicOn;setMusicOn(next);if(next&&running)startMusic();else stopMusic();}}>{musicOn ? "♫ ON" : "♫ OFF"}</button></div>{mode==="training" && running && <button className="exit-training" onClick={exitTraining}>EXIT TRAINING · BACK TO HOME</button>}</div></header>
+    <header><div><p className="eyebrow">ROOFTOP RIVALRY</p><h1>GORILLA <span>BANANA</span> DUEL</h1></div><div className="mode-area"><div className="mode-switch"><button className={mode==="deathmatch"?"selected":""} disabled={running} onClick={()=>setMode("deathmatch")}>60s Death Match</button><button className={mode==="five"?"selected":""} disabled={running} onClick={()=>setMode("five")}>5-Banana Match</button><button className={mode==="training"?"selected":""} disabled={running} onClick={()=>setMode("training")}>Free Training</button><button className="music-toggle" onClick={()=>{const next=!musicOn;setMusicOn(next);if(next&&running)startMusic();else stopMusic();}}>{musicOn ? "♫ MUSIC ON" : "♫ MUSIC OFF"}</button></div>{mode==="training" && running && <button className="exit-training" onClick={exitTraining}>EXIT TRAINING · BACK TO HOME</button>}</div></header>
     <section className="scorebar"><div className="player p1"><strong>PLAYER 1</strong><b>{score[0]}</b></div><div className="status"><span>{mode==="deathmatch" ? `${time}s` : mode==="five" ? `${throws[0]} / 5  ·  ${throws[1]} / 5` : "∞ FREE PLAY"}</span><p>{message}</p></div><div className="player p2"><b>{score[1]}</b><strong>PLAYER 2</strong></div></section>
     <div className="arena"><canvas ref={canvasRef} width={W} height={H} /></div>
     <section className="control-deck">
