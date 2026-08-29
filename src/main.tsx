@@ -122,6 +122,26 @@ export default function Home() {
     ctx.fillStyle = "#fff"; ctx.font = "800 9px Arial"; ctx.textAlign = "center"; ctx.fillText(String(Math.round(power)), x + 32, y - 3); ctx.restore();
   };
 
+  const drawControlLegend = (ctx: CanvasRenderingContext2D, player: Player) => {
+    const left = player === 0 ? 24 : W - 350;
+    const color = player === 0 ? "#53d98c" : "#ff685d";
+    const keys = player === 0
+      ? [["A D", "MOVE"], ["W S", "ANGLE"], ["Q E", "POWER"], ["SPACE", "THROW"]]
+      : [["← →", "MOVE"], ["↑ ↓", "ANGLE"], ["N M", "POWER"], ["ENTER", "THROW"]];
+    ctx.save();
+    ctx.fillStyle = "rgba(7,12,21,.82)"; ctx.strokeStyle = color; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(left, 20, 326, 54, 10); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = color; ctx.font = "900 10px Arial"; ctx.textAlign = "left";
+    ctx.fillText(`PLAYER ${player + 1} CONTROLS`, left + 10, 35);
+    let x = left + 10;
+    for (const [key, label] of keys) {
+      ctx.fillStyle = "#f7f4e8"; ctx.font = "900 11px Arial"; ctx.fillText(key, x, 52);
+      ctx.fillStyle = "#8d9aab"; ctx.font = "700 8px Arial"; ctx.fillText(label, x, 66);
+      x += key.length > 4 ? 83 : 76;
+    }
+    ctx.restore();
+  };
+
   const render = useCallback((now: number) => {
     const canvas = canvasRef.current, ctx = canvas?.getContext("2d"); if (!canvas || !ctx) return;
     const dt = Math.min((now - lastRef.current) / 1000 || 0, 0.035); lastRef.current = now;
@@ -159,6 +179,7 @@ export default function Home() {
     [0,105,230,350,490,625,760,905,1010].forEach((x, i) => { const h = [195,260,225,310,185,275,215,295,240][i]; ctx.fillRect(x, GROUND - h, 115, h); });
     ctx.fillStyle = "#ffd479"; for (let x=18;x<W;x+=38) for(let y=250;y<470;y+=38) if(((x+y)/38)%3<1) ctx.fillRect(x,y,7,11);
     ctx.fillStyle = "#101820"; ctx.fillRect(0, GROUND, W, H-GROUND);
+    drawControlLegend(ctx, 0); drawControlLegend(ctx, 1);
     drawAimGuide(ctx, 0); drawAimGuide(ctx, 1);
     drawGorilla(ctx, positionsRef.current[0], 0); drawGorilla(ctx, positionsRef.current[1], 1);
     drawPowerBar(ctx, 0); drawPowerBar(ctx, 1);
