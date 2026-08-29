@@ -2,7 +2,7 @@ import React from "react";\nimport { createRoot } from "react-dom/client";\nimpo
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-type Mode = "deathmatch" | "five";
+type Mode = "deathmatch" | "five" | "training";
 type Player = 0 | 1;
 type Shot = { x: number; y: number; vx: number; vy: number; owner: Player; rotation: number };
 
@@ -49,8 +49,15 @@ export default function Home() {
     scoreRef.current = [0, 0]; throwsRef.current = [0, 0]; activeRef.current = 0;
     positionsRef.current = [145, 883]; shotsRef.current = [];
     setScore([0, 0]); setThrows([0, 0]); setActive(0); setTime(60);
-    setMessage(modeRef.current === "deathmatch" ? "60 seconds. Fire at will!" : "Player 1 takes the first shot");
+    setMessage(modeRef.current === "deathmatch" ? "60 seconds. Fire at will!" : modeRef.current === "five" ? "Player 1 takes the first shot" : "Free training — unlimited time and bananas");
     runningRef.current = true; setRunning(true); lastRef.current = performance.now();
+  }, []);
+
+  const exitTraining = useCallback(() => {
+    runningRef.current = false; setRunning(false); shotsRef.current = [];
+    scoreRef.current = [0, 0]; throwsRef.current = [0, 0];
+    setScore([0, 0]); setThrows([0, 0]); setTime(60);
+    setMessage("Choose a mode and start the duel");
   }, []);
 
   const registerMiss = useCallback((owner: Player) => {
@@ -203,8 +210,8 @@ export default function Home() {
   }, [running, mode, finish]);
 
   return <main className="game-shell">
-    <header><div><p className="eyebrow">ROOFTOP RIVALRY</p><h1>GORILLA <span>BANANA</span> DUEL</h1></div><div className="mode-switch"><button className={mode==="deathmatch"?"selected":""} disabled={running} onClick={()=>setMode("deathmatch")}>60s Death Match</button><button className={mode==="five"?"selected":""} disabled={running} onClick={()=>setMode("five")}>5-Banana Match</button></div></header>
-    <section className="scorebar"><div className="player p1"><strong>PLAYER 1</strong><b>{score[0]}</b></div><div className="status"><span>{mode==="deathmatch" ? `${time}s` : `${throws[0]} / 5  ·  ${throws[1]} / 5`}</span><p>{message}</p></div><div className="player p2"><b>{score[1]}</b><strong>PLAYER 2</strong></div></section>
+    <header><div><p className="eyebrow">ROOFTOP RIVALRY</p><h1>GORILLA <span>BANANA</span> DUEL</h1></div><div className="mode-area"><div className="mode-switch"><button className={mode==="deathmatch"?"selected":""} disabled={running} onClick={()=>setMode("deathmatch")}>60s Death Match</button><button className={mode==="five"?"selected":""} disabled={running} onClick={()=>setMode("five")}>5-Banana Match</button><button className={mode==="training"?"selected":""} disabled={running} onClick={()=>setMode("training")}>Free Training</button></div>{mode==="training" && running && <button className="exit-training" onClick={exitTraining}>EXIT TRAINING · BACK TO HOME</button>}</div></header>
+    <section className="scorebar"><div className="player p1"><strong>PLAYER 1</strong><b>{score[0]}</b></div><div className="status"><span>{mode==="deathmatch" ? `${time}s` : mode==="five" ? `${throws[0]} / 5  ·  ${throws[1]} / 5` : "∞ FREE PLAY"}</span><p>{message}</p></div><div className="player p2"><b>{score[1]}</b><strong>PLAYER 2</strong></div></section>
     <div className="arena"><canvas ref={canvasRef} width={W} height={H} /></div>
     <section className="control-deck">
       {[0,1].map(i => <article key={i} className={`control-card p${i+1} ${mode==="five"&&running&&active===i?"active":""}`}><div className="control-title"><strong>PLAYER {i+1}</strong><span>{controls[i].throw} TO THROW</span></div><div className="gauges"><label>ANGLE <b>{Math.round(angles[i])}°</b><meter min="10" max="85" value={angles[i]} /></label><label>POWER <b>{Math.round(powers[i])}</b><meter min="20" max="100" value={powers[i]} /></label></div><p>Move <kbd>{controls[i].move}</kbd> · Angle <kbd>{controls[i].angle}</kbd> · Power <kbd>{controls[i].power}</kbd></p></article>)}
