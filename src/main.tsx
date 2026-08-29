@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 type Mode = "deathmatch" | "five" | "training";
 type Player = 0 | 1;
 type Shot = { x: number; y: number; vx: number; vy: number; owner: Player; rotation: number };
+type OnlineSession = { code: string; token: string; player: Player };
 
 const W = 1100, H = 580, GROUND = 508, GRAVITY = 330, GORILLA_W = 72, GORILLA_H = 92;
 const controls = [
@@ -38,6 +39,33 @@ export default function Home() {
   const audioRef = useRef<AudioContext | null>(null);
   const musicTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [musicOn, setMusicOn] = useState(true);
+  const [onlineOpen, setOnlineOpen] = useState(false);
+  const [onlineSession, setOnlineSession] = useState<OnlineSession | null>(null);
+  const onlineRef = useRef<OnlineSession | null>(null);
+  const [joinCode, setJoinCode] = useState("");
+  const [roomReady, setRoomReady] = useState(false);
+  const [roomError, setRoomError] = useState("");
+  const shotSeqRef = useRef<[number, number]>([0, 0]);
+  const remoteShotSeenRef = useRef(0);
+
+  useEffect(() => { onlineRef.current = onlineSession; }, [onlineSession]);
+
+  const roomRequest = useCallback(async (payload: Record<string, unknown>) => {
+    const response = await fetch("/api/rooms", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(payload) });
+    const data = await response.json() as any;
+    if (!response.ok) throw new Error(data.error || "Room request failed");
+    return data;
+  }, []);
+
+  const createRoom = useCallback(async () => {
+    try { setRoomError(""); const data = await roomRequest({ action:"create" }); setOnlineSession({ code:data.code, token:data.token, player:0 }); setRoomReady(false); }
+    catch (e) { setRoomError(e instanceof Error ? e.message : "Could not create room"); }
+  }, [roomRequest]);
+
+  const joinRoom = useCallback(async () => {
+    try { setRoomError(""); const data = await roomRequest({ action:"join", code:joinCode }); setOnlineSession({ code:data.code, token:data.token, player:1 }); setRoomReady(true); }
+    catch (e) { setRoomError(e instanceof Error ? e.message : "Could not join room"); }
+  }, [joinCode, roomRequest]);
 
   const audio = useCallback(() => {
     if (!audioRef.current) audioRef.current = new AudioContext();
@@ -123,6 +151,7 @@ export default function Home() {
     const pos = positionsRef.current[player], angle = valuesRef.current.angles[player] * Math.PI / 180;
     const speed = valuesRef.current.powers[player] * 5.25, direction = player === 0 ? 1 : -1;
     shotsRef.current.push({ x: pos + GORILLA_W / 2 + direction * 32, y: GROUND - 72, vx: Math.cos(angle) * speed * direction, vy: -Math.sin(angle) * speed, owner: player, rotation: 0 });
+    if (onlineRef.current?.player === player) shotSeqRef.current[player]++;
     if (modeRef.current === "five") {
       const t: [number, number] = [...throwsRef.current] as [number, number]; t[player]++;
       throwsRef.current = t; setThrows(t); setMessage(`Player ${player + 1} launched banana ${t[player]} of 5`);
@@ -248,8 +277,8 @@ export default function Home() {
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => { if (["Space","ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Enter"].includes(e.code)) e.preventDefault(); keysRef.current.add(e.code);
-      if (e.code === "Space" && !throwLockRef.current[0]) { throwLockRef.current[0] = true; throwBanana(0); }
-      if (e.code === "Enter" && !throwLockRef.current[1]) { throwLockRef.current[1] = true; throwBanana(1); } };
+      if (e.code === "Space" && (!onlineRef.current || onlineRef.current.player===0) && !throwLockRef.current[0]) { throwLockRef.current[0] = true; throwBanana(0); }
+      if (e.code === "Enter" && (!onlineRef.current || onlineRef.current.player===1) && !throwLockRef.current[1]) { throwLockRef.current[1] = true; throwBanana(1); } };
     const up = (e: KeyboardEvent) => { keysRef.current.delete(e.code); if(e.code === "Space") throwLockRef.current[0]=false; if(e.code === "Enter") throwLockRef.current[1]=false; };
     window.addEventListener("keydown", down); window.addEventListener("keyup", up); frameRef.current = requestAnimationFrame(render);
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); if(frameRef.current) cancelAnimationFrame(frameRef.current); };
@@ -263,8 +292,43 @@ export default function Home() {
 
   useEffect(() => () => { stopMusic(); void audioRef.current?.close(); }, [stopMusic]);
 
+  useEffect(() => {
+    if (!onlineSession) return;
+    let busy = false;
+    const sync = async () => {
+      if (busy) return; busy = true;
+      try {
+        const me = onlineSession.player, other: Player = me === 0 ? 1 : 0;
+        const data = await roomRequest({ action:"sync", code:onlineSession.code, token:onlineSession.token, playerState:{ x:positionsRef.current[me], angle:valuesRef.current.angles[me], power:valuesRef.current.powers[me], score:scoreRef.current[me], shot:shotSeqRef.current[me] } });
+        setRoomReady(data.ready);
+        const remote = data.state.players[other];
+        positionsRef.current[other] = remote.x;
+        setAngles(a => { const n=[...a] as [number,number]; n[other]=remote.angle; return n; });
+        setPowers(p => { const n=[...p] as [number,number]; n[other]=remote.power; return n; });
+        if (remote.score !== scoreRef.current[other]) { const s=[...scoreRef.current] as [number,number]; s[other]=remote.score; scoreRef.current=s; setScore(s); }
+        if (runningRef.current && remote.shot > remoteShotSeenRef.current) { remoteShotSeenRef.current=remote.shot; throwBanana(other); }
+      } catch { /* the next sync recovers transient misses */ }
+      finally { busy=false; }
+    };
+    void sync(); const id=setInterval(sync, 180); return()=>clearInterval(id);
+  }, [onlineSession, roomRequest, throwBanana]);
+
+  const startOnline = useCallback(() => {
+    if (!onlineSession || !roomReady) return;
+    modeRef.current="deathmatch"; setMode("deathmatch"); remoteShotSeenRef.current=0; shotSeqRef.current=[0,0]; reset();
+  }, [onlineSession, roomReady, reset]);
+
+  const leaveOnline = useCallback(() => {
+    runningRef.current=false; setRunning(false); stopMusic(); shotsRef.current=[]; setOnlineSession(null); setRoomReady(false); setOnlineOpen(false); setMessage("Choose a mode and start the duel");
+  }, [stopMusic]);
+
   return <main className="game-shell">
-    <header><div><p className="eyebrow">ROOFTOP RIVALRY</p><h1>GORILLA <span>BANANA</span> DUEL</h1></div><div className="mode-area"><div className="mode-switch"><button className={mode==="deathmatch"?"selected":""} disabled={running} onClick={()=>setMode("deathmatch")}>60s Death Match</button><button className={mode==="five"?"selected":""} disabled={running} onClick={()=>setMode("five")}>5-Banana Match</button><button className={mode==="training"?"selected":""} disabled={running} onClick={()=>setMode("training")}>Free Training</button><button className="music-toggle" onClick={()=>{const next=!musicOn;setMusicOn(next);if(next&&running)startMusic();else stopMusic();}}>{musicOn ? "♫ MUSIC ON" : "♫ MUSIC OFF"}</button></div>{mode==="training" && running && <button className="exit-training" onClick={exitTraining}>EXIT TRAINING · BACK TO HOME</button>}</div></header>
+    <header><div><p className="eyebrow">ROOFTOP RIVALRY</p><h1>GORILLA <span>BANANA</span> DUEL</h1></div><div className="mode-area"><div className="mode-switch"><button className={mode==="deathmatch"?"selected":""} disabled={running} onClick={()=>setMode("deathmatch")}>60s Death Match</button><button className={mode==="five"?"selected":""} disabled={running} onClick={()=>setMode("five")}>5-Banana Match</button><button className={mode==="training"?"selected":""} disabled={running} onClick={()=>setMode("training")}>Free Training</button><button className="online-button" disabled={running} onClick={()=>setOnlineOpen(v=>!v)}>● ONLINE ROOM</button><button className="music-toggle" onClick={()=>{const next=!musicOn;setMusicOn(next);if(next&&running)startMusic();else stopMusic();}}>{musicOn ? "♫ MUSIC ON" : "♫ MUSIC OFF"}</button></div>{mode==="training" && running && <button className="exit-training" onClick={exitTraining}>EXIT TRAINING · BACK TO HOME</button>}</div></header>
+    {onlineOpen && <section className="online-lobby">
+      {!onlineSession ? <><div><strong>PRIVATE ONLINE ROOM</strong><span>60-second death match · two computers</span></div><button onClick={createRoom}>CREATE ROOM</button><i>OR</i><input aria-label="Room code" maxLength={6} placeholder="ROOM CODE" value={joinCode} onChange={e=>setJoinCode(e.target.value.toUpperCase())}/><button onClick={joinRoom}>JOIN ROOM</button></>
+      : <><div><strong>ROOM <em>{onlineSession.code}</em></strong><span>You are Player {onlineSession.player+1} · {roomReady ? "opponent connected" : "waiting for Player 2…"}</span></div><button disabled={!roomReady || running} onClick={startOnline}>{running ? "MATCH LIVE" : roomReady ? "START ONLINE MATCH" : "WAITING…"}</button><button className="leave-room" onClick={leaveOnline}>LEAVE ROOM</button></>}
+      {roomError && <p>{roomError}</p>}
+    </section>}
     <section className="scorebar"><div className="player p1"><strong>PLAYER 1</strong><b>{score[0]}</b></div><div className="status"><span>{mode==="deathmatch" ? `${time}s` : mode==="five" ? `${throws[0]} / 5  ·  ${throws[1]} / 5` : "∞ FREE PLAY"}</span><p>{message}</p></div><div className="player p2"><b>{score[1]}</b><strong>PLAYER 2</strong></div></section>
     <div className="arena"><canvas ref={canvasRef} width={W} height={H} /></div>
     <section className="control-deck">
