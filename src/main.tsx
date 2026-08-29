@@ -74,16 +74,52 @@ export default function Home() {
   }, []);
 
   const drawGorilla = (ctx: CanvasRenderingContext2D, x: number, player: Player) => {
-    const y = GROUND - GORILLA_H, color = player === 0 ? "#53d98c" : "#ff685d";
-    ctx.save(); ctx.translate(x, y); ctx.fillStyle = "rgba(0,0,0,.22)";
-    ctx.beginPath(); ctx.ellipse(36, 96, 47, 9, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = color; ctx.beginPath(); ctx.ellipse(36, 58, 31, 36, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(36, 22, 23, 0, Math.PI * 2); ctx.fill();
-    ctx.lineWidth = 14; ctx.lineCap = "round"; ctx.strokeStyle = color; ctx.beginPath();
-    ctx.moveTo(13, 48); ctx.lineTo(player === 0 ? -7 : 2, 74); ctx.moveTo(59, 48); ctx.lineTo(player === 0 ? 70 : 79, 74); ctx.stroke();
-    ctx.strokeStyle = "#1b2430"; ctx.lineWidth = 12; ctx.beginPath(); ctx.moveTo(25, 84); ctx.lineTo(18, 96); ctx.moveTo(48, 84); ctx.lineTo(55, 96); ctx.stroke();
-    ctx.fillStyle = "#f1c5a5"; ctx.beginPath(); ctx.ellipse(36, 27, 14, 11, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "#17202c"; ctx.beginPath(); ctx.arc(29, 17, 2.5, 0, 7); ctx.arc(43, 17, 2.5, 0, 7); ctx.fill(); ctx.restore();
+    const y = GROUND - GORILLA_H, team = player === 0 ? "#53d98c" : "#ff685d";
+    ctx.save();
+    ctx.translate(x + 36, y);
+    ctx.scale(player === 0 ? 1 : -1, 1);
+    ctx.fillStyle = "rgba(0,0,0,.28)";
+    ctx.beginPath(); ctx.ellipse(0, 96, 47, 9, 0, 0, Math.PI * 2); ctx.fill();
+    // Oversized cartoon arms and knuckles.
+    ctx.strokeStyle = "#30251f"; ctx.lineWidth = 18; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(-19, 47); ctx.quadraticCurveTo(-35, 61, -40, 84); ctx.moveTo(19, 47); ctx.quadraticCurveTo(34, 51, 41, 71); ctx.stroke();
+    ctx.fillStyle = "#6b5140"; ctx.beginPath(); ctx.arc(-42, 86, 11, 0, 7); ctx.arc(43, 74, 11, 0, 7); ctx.fill();
+    // Barrel chest and crouched legs.
+    ctx.fillStyle = "#3b2d25"; ctx.beginPath(); ctx.ellipse(0, 58, 34, 38, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#1d1714"; ctx.beginPath(); ctx.ellipse(-18, 88, 18, 13, -.18, 0, 7); ctx.ellipse(18, 88, 18, 13, .18, 0, 7); ctx.fill();
+    ctx.fillStyle = team; ctx.beginPath(); ctx.roundRect(-27, 49, 54, 25, 8); ctx.fill();
+    ctx.fillStyle = "#fff"; ctx.font = "900 15px Arial"; ctx.textAlign = "center"; ctx.fillText(String(player + 1), 0, 67);
+    // Brow, ears, muzzle and a clear inward-looking face.
+    ctx.fillStyle = "#34271f"; ctx.beginPath(); ctx.arc(0, 22, 25, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#705443"; ctx.beginPath(); ctx.arc(-24, 24, 8, 0, 7); ctx.arc(24, 24, 8, 0, 7); ctx.ellipse(4, 29, 16, 13, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle = "#171311"; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(-14, 12); ctx.lineTo(-2, 10); ctx.moveTo(7, 10); ctx.lineTo(18, 13); ctx.stroke();
+    ctx.fillStyle = "#f4efe8"; ctx.beginPath(); ctx.ellipse(-6, 18, 4, 5, 0, 0, 7); ctx.ellipse(9, 18, 4, 5, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = "#111"; ctx.beginPath(); ctx.arc(-4, 18, 2, 0, 7); ctx.arc(11, 18, 2, 0, 7); ctx.arc(0, 29, 2, 0, 7); ctx.arc(8, 29, 2, 0, 7); ctx.fill();
+    ctx.strokeStyle = "#211814"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(4, 32, 9, .25, Math.PI - .1); ctx.stroke();
+    ctx.restore();
+  };
+
+  const drawAimGuide = (ctx: CanvasRenderingContext2D, player: Player) => {
+    const direction = player === 0 ? 1 : -1;
+    const angle = valuesRef.current.angles[player] * Math.PI / 180;
+    const x = positionsRef.current[player] + GORILLA_W / 2 + direction * 32;
+    const y = GROUND - 72;
+    const length = 78 + valuesRef.current.powers[player] * .8;
+    const endX = x + Math.cos(angle) * length * direction;
+    const endY = y - Math.sin(angle) * length;
+    ctx.save();
+    ctx.strokeStyle = player === 0 ? "rgba(83,217,140,.9)" : "rgba(255,104,93,.9)";
+    ctx.lineWidth = 3; ctx.setLineDash([8, 8]); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(endX, endY); ctx.stroke();
+    ctx.setLineDash([]); ctx.fillStyle = ctx.strokeStyle; ctx.beginPath(); ctx.arc(endX, endY, 5, 0, 7); ctx.fill();
+    ctx.restore();
+  };
+
+  const drawPowerBar = (ctx: CanvasRenderingContext2D, player: Player) => {
+    const x = positionsRef.current[player] + 4, y = GROUND - GORILLA_H - 24;
+    const power = valuesRef.current.powers[player], color = player === 0 ? "#53d98c" : "#ff685d";
+    ctx.save(); ctx.fillStyle = "rgba(5,9,15,.82)"; ctx.beginPath(); ctx.roundRect(x, y, 64, 13, 6); ctx.fill();
+    ctx.fillStyle = color; ctx.beginPath(); ctx.roundRect(x + 3, y + 3, Math.max(5, 58 * power / 100), 7, 4); ctx.fill();
+    ctx.fillStyle = "#fff"; ctx.font = "800 9px Arial"; ctx.textAlign = "center"; ctx.fillText(String(Math.round(power)), x + 32, y - 3); ctx.restore();
   };
 
   const render = useCallback((now: number) => {
@@ -122,7 +158,10 @@ export default function Home() {
     ctx.fillStyle = "rgba(255,220,160,.65)"; ctx.beginPath(); ctx.arc(550, 100, 46, 0, 7); ctx.fill(); ctx.fillStyle = "#172334";
     [0,105,230,350,490,625,760,905,1010].forEach((x, i) => { const h = [195,260,225,310,185,275,215,295,240][i]; ctx.fillRect(x, GROUND - h, 115, h); });
     ctx.fillStyle = "#ffd479"; for (let x=18;x<W;x+=38) for(let y=250;y<470;y+=38) if(((x+y)/38)%3<1) ctx.fillRect(x,y,7,11);
-    ctx.fillStyle = "#101820"; ctx.fillRect(0, GROUND, W, H-GROUND); drawGorilla(ctx, positionsRef.current[0], 0); drawGorilla(ctx, positionsRef.current[1], 1);
+    ctx.fillStyle = "#101820"; ctx.fillRect(0, GROUND, W, H-GROUND);
+    drawAimGuide(ctx, 0); drawAimGuide(ctx, 1);
+    drawGorilla(ctx, positionsRef.current[0], 0); drawGorilla(ctx, positionsRef.current[1], 1);
+    drawPowerBar(ctx, 0); drawPowerBar(ctx, 1);
     for (const shot of shotsRef.current) { ctx.save(); ctx.translate(shot.x, shot.y); ctx.rotate(shot.rotation); ctx.strokeStyle="#ffe044"; ctx.lineWidth=7; ctx.lineCap="round"; ctx.beginPath(); ctx.arc(0,0,12,.1,Math.PI*1.35); ctx.stroke(); ctx.restore(); }
     frameRef.current = requestAnimationFrame(render);
   }, [finish, registerMiss]);
