@@ -35,15 +35,57 @@ export default function Home() {
   const [powers, setPowers] = useState<[number, number]>([68, 68]);
   const valuesRef = useRef({ angles, powers });
   const [message, setMessage] = useState("Choose a mode and start the duel");
+  const audioRef = useRef<AudioContext | null>(null);
+  const musicTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [musicOn, setMusicOn] = useState(true);
+
+  const audio = useCallback(() => {
+    if (!audioRef.current) audioRef.current = new AudioContext();
+    if (audioRef.current.state === "suspended") void audioRef.current.resume();
+    return audioRef.current;
+  }, []);
+
+  const tone = useCallback((frequency: number, duration: number, volume: number, delay = 0, wave: OscillatorType = "square") => {
+    const ctx = audio(), start = ctx.currentTime + delay;
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.type = wave; osc.frequency.setValueAtTime(frequency, start);
+    gain.gain.setValueAtTime(0.0001, start); gain.gain.exponentialRampToValueAtTime(volume, start + .012);
+    gain.gain.exponentialRampToValueAtTime(.0001, start + duration);
+    osc.connect(gain); gain.connect(ctx.destination); osc.start(start); osc.stop(start + duration + .02);
+  }, [audio]);
+
+  const playHitSound = useCallback((headshot: boolean) => {
+    tone(headshot ? 880 : 660, .12, .16, 0, "sine");
+    tone(headshot ? 1320 : 990, .18, .13, .09, "sine");
+    if (headshot) tone(1760, .2, .09, .18, "triangle");
+  }, [tone]);
+
+  const stopMusic = useCallback(() => {
+    if (musicTimerRef.current) clearInterval(musicTimerRef.current);
+    musicTimerRef.current = null;
+  }, []);
+
+  const startMusic = useCallback(() => {
+    stopMusic();
+    const melody = [262, 330, 392, 523, 392, 330, 294, 370, 440, 587, 440, 370];
+    let step = 0;
+    tone(melody[0], .16, .022, 0, "triangle");
+    musicTimerRef.current = setInterval(() => {
+      const note = melody[step++ % melody.length];
+      tone(note, .16, .022, 0, "triangle");
+      if (step % 2 === 0) tone(note / 2, .11, .014, 0, "sine");
+    }, 260);
+  }, [stopMusic, tone]);
 
   useEffect(() => { valuesRef.current = { angles, powers }; }, [angles, powers]);
   useEffect(() => { modeRef.current = mode; }, [mode]);
 
   const finish = useCallback(() => {
     runningRef.current = false; setRunning(false); shotsRef.current = [];
+    stopMusic();
     const s = scoreRef.current;
     setMessage(s[0] === s[1] ? `Draw — ${s[0]} to ${s[1]}` : `Player ${s[0] > s[1] ? 1 : 2} wins — ${Math.max(...s)} to ${Math.min(...s)}`);
-  }, []);
+  }, [stopMusic]);
 
   const reset = useCallback(() => {
     scoreRef.current = [0, 0]; throwsRef.current = [0, 0]; activeRef.current = 0;
@@ -51,14 +93,16 @@ export default function Home() {
     setScore([0, 0]); setThrows([0, 0]); setActive(0); setTime(60);
     setMessage(modeRef.current === "deathmatch" ? "60 seconds. Fire at will!" : modeRef.current === "five" ? "Player 1 takes the first shot" : "Free training — unlimited time and bananas");
     runningRef.current = true; setRunning(true); lastRef.current = performance.now();
-  }, []);
+    if (musicOn) startMusic();
+  }, [musicOn, startMusic]);
 
   const exitTraining = useCallback(() => {
     runningRef.current = false; setRunning(false); shotsRef.current = [];
     scoreRef.current = [0, 0]; throwsRef.current = [0, 0];
     setScore([0, 0]); setThrows([0, 0]); setTime(60);
     setMessage("Choose a mode and start the duel");
-  }, []);
+    stopMusic();
+  }, [stopMusic]);
 
   const registerMiss = useCallback((owner: Player) => {
     if (modeRef.current !== "five") return;
@@ -173,6 +217,7 @@ export default function Home() {
         if (headHit || bodyHit) {
           const points = headHit ? 2 : 1, s: [number, number] = [...scoreRef.current] as [number, number]; s[shot.owner] += points;
           scoreRef.current = s; setScore(s); setMessage(`${headHit ? "HEADSHOT" : "Hit"}! Player ${shot.owner + 1} +${points}`);
+          playHitSound(headHit);
           if (modeRef.current === "five") { const next: Player = shot.owner === 0 ? 1 : 0; activeRef.current = next; setActive(next); if (throwsRef.current[0] + throwsRef.current[1] >= 10) setTimeout(finish, 450); }
           continue;
         }
@@ -192,7 +237,7 @@ export default function Home() {
     drawPowerBar(ctx, 0); drawPowerBar(ctx, 1);
     for (const shot of shotsRef.current) { ctx.save(); ctx.translate(shot.x, shot.y); ctx.rotate(shot.rotation); ctx.strokeStyle="#ffe044"; ctx.lineWidth=7; ctx.lineCap="round"; ctx.beginPath(); ctx.arc(0,0,12,.1,Math.PI*1.35); ctx.stroke(); ctx.restore(); }
     frameRef.current = requestAnimationFrame(render);
-  }, [finish, registerMiss]);
+  }, [finish, playHitSound, registerMiss]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => { if (["Space","ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Enter"].includes(e.code)) e.preventDefault(); keysRef.current.add(e.code);
@@ -209,8 +254,10 @@ export default function Home() {
     return () => clearInterval(timer);
   }, [running, mode, finish]);
 
+  useEffect(() => () => { stopMusic(); void audioRef.current?.close(); }, [stopMusic]);
+
   return <main className="game-shell">
-    <header><div><p className="eyebrow">ROOFTOP RIVALRY</p><h1>GORILLA <span>BANANA</span> DUEL</h1></div><div className="mode-area"><div className="mode-switch"><button className={mode==="deathmatch"?"selected":""} disabled={running} onClick={()=>setMode("deathmatch")}>60s Death Match</button><button className={mode==="five"?"selected":""} disabled={running} onClick={()=>setMode("five")}>5-Banana Match</button><button className={mode==="training"?"selected":""} disabled={running} onClick={()=>setMode("training")}>Free Training</button></div>{mode==="training" && running && <button className="exit-training" onClick={exitTraining}>EXIT TRAINING · BACK TO HOME</button>}</div></header>
+    <header><div><p className="eyebrow">ROOFTOP RIVALRY</p><h1>GORILLA <span>BANANA</span> DUEL</h1></div><div className="mode-area"><div className="mode-switch"><button className={mode==="deathmatch"?"selected":""} disabled={running} onClick={()=>setMode("deathmatch")}>60s Death Match</button><button className={mode==="five"?"selected":""} disabled={running} onClick={()=>setMode("five")}>5-Banana Match</button><button className={mode==="training"?"selected":""} disabled={running} onClick={()=>setMode("training")}>Free Training</button><button className="music-toggle" onClick={()=>{const next=!musicOn;setMusicOn(next);if(next&&running)startMusic();else stopMusic();}}>{musicOn ? "♫ ON" : "♫ OFF"}</button></div>{mode==="training" && running && <button className="exit-training" onClick={exitTraining}>EXIT TRAINING · BACK TO HOME</button>}</div></header>
     <section className="scorebar"><div className="player p1"><strong>PLAYER 1</strong><b>{score[0]}</b></div><div className="status"><span>{mode==="deathmatch" ? `${time}s` : mode==="five" ? `${throws[0]} / 5  ·  ${throws[1]} / 5` : "∞ FREE PLAY"}</span><p>{message}</p></div><div className="player p2"><b>{score[1]}</b><strong>PLAYER 2</strong></div></section>
     <div className="arena"><canvas ref={canvasRef} width={W} height={H} /></div>
     <section className="control-deck">
